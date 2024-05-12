@@ -6,9 +6,10 @@ display.init()
 mixer.init()
 pygame.font.init()
 
-sound_playerShoot = mixer.Sound("sounds/playerShoot.wav")
+sound_playerShoot = mixer.Sound("sounds/playerShoot.mp3")
 sound_playerReload = mixer.Sound("sounds/playerReload.wav")
 sound_playerHurt = mixer.Sound("sounds/playerHurt.wav")
+sound_playerWeaponChange = mixer.Sound("sounds/playerWeaponChange.mp3")
 sound_gameOver = mixer.Sound("sounds/gameOver.wav")
 font = pygame.font.Font(None, 64)
 
@@ -33,10 +34,20 @@ player_fog = 400
 player_health = 100
 player_healthCd = 0
 
+
 player_atkCd = 0
-player_atkBullets = 0
-player_atkReload = 180
+player_atkReload = 130
 player_shooting = False
+player_gun = 0
+
+player_guns = [
+    [20, 12, 130, 1, 0], # [cd, bullets, reload, burst, curBUllets]
+    [40, 7, 200, 3, 0]
+]
+player_guns_sprite:list[list[tuple[int, int]]] = [
+    [(564, 599), (564, 597), (567, 597), (567, 599), (644, 599), (645, 596), (645, 596), (646, 599), (648, 599), (651, 596), (654, 599), (654, 600), (660, 612), (650, 622), (656, 657), (653, 658), (653, 660), (634, 660), (625, 632), (607, 631), (602, 618), (585, 617), (585, 615), (561, 615), (560, 607), (560, 599), (563, 599)],
+    [(510, 611), (579, 610), (583, 607), (630, 607), (633, 610), (637, 613), (643, 612), (654, 616), (653, 620), (656, 622), (655, 628), (648, 632), (660, 652), (657, 656), (642, 660), (640, 658), (633, 635), (621, 633), (612, 626), (603, 627), (604, 636), (583, 633), (582, 628), (560, 627), (558, 629), (520, 629), (517, 626), (513, 626), (513, 621), (517, 617), (510, 617)]
+]
 
 player_bullets_pos = []
 player_bullets_angle = []
@@ -45,6 +56,7 @@ playTime = 0
 playTimeSec = 0
 
 gameOver = False
+timeStr = ""
 
 def addEnemy():
     global enemies_angle, enemies_health, enemies_pos, enemies_see, player_pos, enemy_spawnRadius, player_fog
@@ -97,7 +109,7 @@ while True:
 
                     player_bullets_pos = []
                     player_bullets_angle = []
-
+                    player_gun = 0
                     playTime = 0
                     playTimeSec = 0
                 else:
@@ -107,8 +119,26 @@ while True:
                 player_shooting = False
                 
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_r and player_atkReload <= 0 and player_atkCd <= 0 and player_atkBullets < 12:
-                player_atkReload = 180
+            if event.key == pygame.K_e and player_atkReload <= 0 and player_atkCd <= 0:
+                player_gun += 1
+                player_gun %= len(player_guns)
+                if player_guns[player_gun][4] <= 0:
+                    player_atkReload = player_guns[player_gun][2]
+                sound_playerWeaponChange.play()
+            if event.key == pygame.K_q and player_atkReload <= 0 and player_atkCd <= 0:
+                player_gun -= 1
+                if player_gun < 0:
+                    player_gun = len(player_guns)-1
+                player_atkCd = player_guns[player_gun][0]
+                if player_guns[player_gun][4] <= 0:
+                    player_atkReload = player_guns[player_gun][2]
+                sound_playerWeaponChange.play()
+            if event.key == pygame.K_r and player_atkReload <= 0 and player_atkCd <= 0 and player_guns[player_gun][4] < 12:
+                player_atkReload = player_guns[player_gun][2]
+                player_guns[player_gun]
+                player_atkCd = player_guns[player_gun][0]
+                
+    cur_gun = player_guns[player_gun]
             
     surface.fill((50, 50, 50))
     
@@ -146,20 +176,28 @@ while True:
         if player_shooting and player_atkCd <= 0 and player_atkReload <= 0:
             player_bullets_pos.append(player_pos)
             player_bullets_angle.append(player_angle)
-            player_atkCd = 20
-            player_atkBullets -= 1
+            bullets_fov = 20 * math.pi / 180
+            burst = cur_gun[3]-1
+            for i in range(cur_gun[3]):
+                angle = player_angle
+                if burst > 0:
+                    angle = player_angle - bullets_fov / 2 + bullets_fov / burst * i
+                player_bullets_pos.append(player_pos)
+                player_bullets_angle.append(angle)
+            player_atkCd = cur_gun[0]
+            cur_gun[4] -= 1
             sound_playerShoot.play()
-            if player_atkBullets <= 0:
-                player_atkReload = 180
+            if cur_gun[4] <= 0:
+                player_atkReload = cur_gun[2]
                 
         if player_atkCd > 0: 
-            player_atkCd -= enemy_speed / 2 + 0.75
+            player_atkCd -= 1
             
         if player_atkReload > 0: 
-            player_atkReload -= enemy_speed / 2 + 0.75
+            player_atkReload -= 1
             if player_atkReload <= 0:
                 sound_playerReload.play()
-                player_atkBullets = int(12 * (enemy_speed / 2 + 0.75))
+                cur_gun[4] = cur_gun[1]
         
         if player_healthCd > 0: player_healthCd -= 1
         
@@ -245,13 +283,13 @@ while True:
         draw.rect(surface, (75, 75, 75), (0, 0, 660, 32))
         
         draw.rect(surface, (150, 125, 50), (10, 4, 640, 6))
-        draw.rect(surface, (255, 200, 50), (10, 4, int(640 * player_atkBullets / 12), 6))
+        draw.rect(surface, (255, 200, 50), (10, 4, int(640 * cur_gun[4] / cur_gun[1]), 6))
         
         draw.rect(surface, (125, 125, 125), (10, 14, 640, 6))
-        draw.rect(surface, (200, 200, 200), (10, 14, int(640 * player_atkCd / 20), 6))
+        draw.rect(surface, (200, 200, 200), (10, 14, int(640 * player_atkCd / cur_gun[0]), 6))
         
         draw.rect(surface, (50, 125, 50), (10, 24, 640, 6))
-        draw.rect(surface, (50, 200, 50), (10, 24, int(640 * player_atkReload / 180), 6))
+        draw.rect(surface, (50, 200, 50), (10, 24, int(640 * player_atkReload / cur_gun[2]), 6))
         
         playTime += 1
         playTimeSec = playTime // 60
@@ -261,16 +299,20 @@ while True:
         if sec < 10:
             secStr = f"0{secStr}"
         minutes = (playTimeSec - sec) // 60
-        
-        timefont = font.render(f"{minutes}:{secStr}", True, (250, 250, 250), None)
+        timeStr = f"{minutes}:{secStr}"
+        timefont = font.render(f"{timeStr}", True, (250, 250, 250), None)
         
         surface.blit(timefont, (330 - timefont.get_width() // 2, 32))
+        
+        draw.lines(surface, (100, 255, 255), True, player_guns_sprite[player_gun], 5)
     else:
         gameOverfont = font.render(f"Game Over!!!", True, (250, 250, 250), None)
         gameOverRestartfont = font.render(f"Click to restart!!!", True, (250, 250, 250), None)
-        height = gameOverfont.get_height() + 50 + gameOverRestartfont.get_height()
+        timeSurvfont = font.render(f"Your time: {timeStr}", True, (250, 250, 250), None)
+        height = gameOverfont.get_height() + 50 + gameOverRestartfont.get_height() + 50 + timeSurvfont.get_height()
         
         surface.blit(gameOverfont, (330 - gameOverfont.get_width() // 2, 330 - height // 2))
         surface.blit(gameOverRestartfont, (330 - gameOverRestartfont.get_width() // 2, 380 - height // 2))
+        surface.blit(timeSurvfont, (330 - timeSurvfont.get_width() // 2, 430 - height // 2))
     display.flip()
     clock.tick(60)
